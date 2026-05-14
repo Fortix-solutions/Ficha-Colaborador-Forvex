@@ -84,7 +84,7 @@
 
   <!-- ⚠️  SUBSTITUA ESTA URL PELO ENDEREÇO DO SEU GOOGLE APPS SCRIPT -->
   <script>
-    var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFTmRf5jQLLRjFtc2DSGdzDfgGb2gqPNlfFiAzHNIRu_7tzTxnJlfB2Q5iTMRjUEeuaw/exec";
+    var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKcQDCtC5qNw8F0JgsWup8yt3DhRNHZyj5zpQZO7Azzo_OBda8j73BvK92LrCACg91Ew/exec";
     var nomeColaboradorGuardado = "";
   </script>
 
@@ -929,23 +929,9 @@
       return;
     }
 
-    var fd = new FormData();
-    fd.append('payload', JSON.stringify(dadosColab));
-    fetch(SCRIPT_URL, {
-      method: 'POST',
-      body: fd
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.sucesso) {
-        avancarParaTransicao();
-      } else {
-        loading.style.display = 'none';
-        btnSub.disabled = false;
-        erro.style.display = 'block';
-      }
-    })
-    .catch(function() {
+    enviarParaScript(dadosColab, function() {
+      avancarParaTransicao();
+    }, function() {
       loading.style.display = 'none';
       btnSub.disabled = false;
       erro.style.display = 'block';
@@ -998,14 +984,12 @@
       setTimeout(mostrarSucesso, 600); return;
     }
 
-    var fd3 = new FormData(); fd3.append('payload', JSON.stringify(dadosUpdate));
-    fetch(SCRIPT_URL, { method: 'POST', body: fd3 })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.sucesso) { mostrarSucesso(); }
-        else { loadingU.style.display='none'; erroU.style.display='block'; }
-      })
-      .catch(function() { loadingU.style.display='none'; erroU.style.display='block'; });
+    enviarParaScript(dadosUpdate, function() {
+      mostrarSucesso();
+    }, function() {
+      loadingU.style.display = 'none';
+      erroU.style.display = 'block';
+    });
   });
 
   document.getElementById('admForm').addEventListener('submit', function(e) {
@@ -1065,7 +1049,27 @@
     });
   });
 
-  updateUI();
+  function enviarParaScript(dados, onSuccess, onError) {
+    var params = Object.keys(dados).map(function(k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(dados[k] || '');
+    }).join('&');
+
+    fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params
+    })
+    .then(function() {
+      // no-cors always succeeds silently
+      setTimeout(onSuccess, 500);
+    })
+    .catch(function() {
+      onError();
+    });
+  }
+
+    updateUI();
 
   function campo(label, valor) {
     return '<div class="pdf-field"><label>' + label + '</label><span>' + (valor || '—') + '</span></div>';
