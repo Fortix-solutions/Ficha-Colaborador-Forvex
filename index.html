@@ -1062,6 +1062,14 @@
       document.getElementById('phaseTransition').classList.remove('hidden');
       showAdmLogin();
     }
+    // Pre-fill NIF if passed in URL
+    var nifParam = params.get('nif');
+    if (nifParam) {
+      var nifField = document.getElementById('nif');
+      if (nifField) nifField.value = nifParam;
+      // Also store for later use
+      window._nifPreenchido = nifParam;
+    }
   })();
 
   function campo(label, valor) {
