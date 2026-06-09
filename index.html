@@ -1023,6 +1023,37 @@
     btnAdm.disabled       = true;
 
     function finalizarFicha() {
+      // Directly update Supabase ficha_pendente=false from browser
+      var nifFicha = window._nifPreenchido || '';
+      if (nifFicha) {
+        var SB_URL2 = 'https://wbriqlcqfgnpjbxesmdc.supabase.co';
+        var SB_KEY2 = 'sb_publishable_T2GYe2-5dVrXLWZasUzPZQ_DnS7k-27';
+        // Get colaborador id by NIF then update
+        fetch(SB_URL2 + '/rest/v1/colaboradores?nif=eq.' + encodeURIComponent(nifFicha) + '&select=id', {
+          headers: { 'apikey': SB_KEY2, 'Authorization': 'Bearer ' + SB_KEY2 }
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+          if (data && data.length > 0) {
+            var cid = data[0].id;
+            var updatePayload = { ficha_pendente: false };
+            if (dadosAdm.funcao)        updatePayload.cargo        = dadosAdm.funcao;
+            if (dadosAdm.departamento)  updatePayload.departamento  = dadosAdm.departamento;
+            if (dadosAdm.dataAdmissao)  updatePayload.data_admissao = dadosAdm.dataAdmissao;
+            fetch(SB_URL2 + '/rest/v1/colaboradores?id=eq.' + cid, {
+              method: 'PATCH',
+              headers: {
+                'apikey': SB_KEY2,
+                'Authorization': 'Bearer ' + SB_KEY2,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal'
+              },
+              body: JSON.stringify(updatePayload)
+            });
+          }
+        })
+        .catch(function(){});
+      }
       loading2.style.display = 'none';
       btnAdm.disabled = false;
       document.getElementById('admForm').style.display = 'none';
@@ -1221,20 +1252,33 @@
 
     // If we have NIF, fetch from Supabase for complete data
     if (nif) {
-      Promise.all([
-        fetch(SB_URL + '/rest/v1/colaboradores?nif=eq.' + encodeURIComponent(nif) + '&select=*', {
+      // Step 1: get colaborador by NIF
+      fetch(SB_URL + '/rest/v1/colaboradores?nif=eq.' + encodeURIComponent(nif) + '&select=*', {
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(colabs) {
+        var colab = (colabs && colabs.length > 0) ? colabs[0] : {};
+        var colaboradorId = colab.id || '';
+        if (!colaboradorId) {
+          montarPDF(colab, colab, dadosAdm || {});
+          return;
+        }
+        // Step 2: get ficha by colaborador_id
+        fetch(SB_URL + '/rest/v1/fichas?colaborador_id=eq.' + colaboradorId + '&select=*', {
           headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
-        }).then(function(r){ return r.json(); }),
-        fetch(SB_URL + '/rest/v1/fichas?nif=eq.' + encodeURIComponent(nif) + '&select=*', {
-          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
-        }).then(function(r){ return r.json(); })
-      ]).then(function(results) {
-        var colab = (results[0] && results[0].length > 0) ? results[0][0] : {};
-        var ficha = (results[1] && results[1].length > 0) ? results[1][0] : {};
-        // Merge ficha data into colab
-        var dadosCombinados = Object.assign({}, colab, ficha);
-        montarPDF(dadosCombinados, colab, dadosAdm || {});
-      }).catch(function() {
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(fichas) {
+          var ficha = (fichas && fichas.length > 0) ? fichas[0] : {};
+          var dadosCombinados = Object.assign({}, colab, ficha);
+          montarPDF(dadosCombinados, colab, dadosAdm || {});
+        })
+        .catch(function() {
+          montarPDF(colab, colab, dadosAdm || {});
+        });
+      })
+      .catch(function() {
         montarPDF(dadosColab || {}, {}, dadosAdm || {});
       });
     } else {
