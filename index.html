@@ -604,6 +604,10 @@
       <div class="section">
         <div class="section-title adm-color"><i class="ti ti-briefcase"></i> Dados profissionais</div>
         <div class="grid2">
+          <div class="field full">
+            <label class="lbl" for="nomeAdm">Nome do colaborador <span class="req">*</span></label>
+            <input type="text" id="nomeAdm" placeholder="Nome completo do colaborador" required />
+          </div>
           <div class="field">
             <label class="lbl" for="funcao">Função / Cargo <span class="req">*</span></label>
             <input type="text" id="funcao" placeholder="Ex: Técnico Comercial" required />
@@ -995,9 +999,11 @@
   document.getElementById('admForm').addEventListener('submit', function(e) {
     e.preventDefault();
 
+    var nomeAdmField = document.getElementById('nomeAdm');
+    if (nomeAdmField && nomeAdmField.value) nomeColaboradorGuardado = nomeAdmField.value;
     dadosAdm = {
       fase: 'administracao',
-      nomeColaborador: nomeColaboradorGuardado,
+      nomeColaborador: nomeColaboradorGuardado || (nomeAdmField ? nomeAdmField.value : ''),
       nif: (window._nifPreenchido || ''),
       funcao: val('funcao'), departamento: val('departamento'),
       dataAdmissao: val('dataAdmissao'), tipoContrato: val('tipoContrato'),
@@ -1058,18 +1064,33 @@
   // Detect ?adm=1 in URL to show admin login directly
   (function() {
     var params = new URLSearchParams(window.location.search);
-    if (params.get('adm') === '1') {
-      document.getElementById('phaseWelcome').classList.add('hidden');
-      document.getElementById('phaseTransition').classList.remove('hidden');
-      showAdmLogin();
-    }
-    // Pre-fill NIF if passed in URL
     var nifParam = params.get('nif');
     if (nifParam) {
       var nifField = document.getElementById('nif');
       if (nifField) nifField.value = nifParam;
-      // Also store for later use
       window._nifPreenchido = nifParam;
+    }
+    if (params.get('adm') === '1') {
+      document.getElementById('phaseWelcome').classList.add('hidden');
+      document.getElementById('phaseTransition').classList.remove('hidden');
+      showAdmLogin();
+      // Auto-fill nome from Supabase
+      if (nifParam) {
+        var SB_URL = 'https://wbriqlcqfgnpjbxesmdc.supabase.co';
+        var SB_KEY = 'sb_publishable_T2GYe2-5dVrXLWZasUzPZQ_DnS7k-27';
+        fetch(SB_URL + '/rest/v1/colaboradores?nif=eq.' + encodeURIComponent(nifParam) + '&select=nome', {
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (data && data.length > 0) {
+            var nomeField = document.getElementById('nomeAdm');
+            if (nomeField) nomeField.value = data[0].nome;
+            nomeColaboradorGuardado = data[0].nome;
+          }
+        })
+        .catch(function(){});
+      }
     }
   })();
 
@@ -1081,97 +1102,96 @@
   }
 
   function gerarPDF() {
-    var d = dadosColab;
-    var adm = dadosAdm || {};
+    var SB_URL = 'https://wbriqlcqfgnpjbxesmdc.supabase.co';
+    var SB_KEY = 'sb_publishable_T2GYe2-5dVrXLWZasUzPZQ_DnS7k-27';
+    var nif = window._nifPreenchido || (dadosColab && dadosColab.nif) || '';
     var agora = new Date().toLocaleDateString('pt-PT');
 
-    var html = '<div class="pdf-header">' +
-      '<div class="pdf-title">Ficha do Colaborador — Fortix</div>' +
-      '<div class="pdf-sub">Gerada em ' + agora + ' &nbsp;|&nbsp; ' + (d.nomeCompleto || '') + '</div>' +
-    '</div>' +
-
-    '<div class="pdf-section">' +
-      '<div class="pdf-section-title">Identificação</div>' +
-      '<div class="pdf-grid">' +
-        campo('Nome completo', d.nomeCompleto) +
-        campo('Data de nascimento', d.dataNasc) +
-        campo('NIF', d.nif) +
-        campo('NISS', d.niss) +
-        campo('Tipo de documento', d.tipoDoc) +
-        campo('N.º do documento', d.numDoc) +
-        campo('Validade', d.validadeDoc) +
-        campo('Nacionalidade', d.nacionalidade) +
-        campo('Género', d.genero) +
+    function montarPDF(d, f, adm) {
+      var html = '<div class="pdf-header">' +
+        '<img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD" style="height:50px;margin-bottom:8px" alt="Fortix" />' +
+        '<div class="pdf-title">Ficha do Colaborador — Fortix Solutions</div>' +
+        '<div class="pdf-sub">Gerada em ' + agora + ' &nbsp;|&nbsp; ' + (d.nome || d.nomeCompleto || '') + ' &nbsp;|&nbsp; NIF: ' + (d.nif || '') + '</div>' +
       '</div>' +
-    '</div>' +
 
-    '<div class="pdf-section">' +
-      '<div class="pdf-section-title">Morada</div>' +
-      '<div class="pdf-grid">' +
-        campoFull('Rua / Avenida', d.morada) +
-        campo('Código postal', d.codPostal) +
-        campo('Localidade', d.localidade) +
+      '<div class="pdf-section">' +
+        '<div class="pdf-section-title">Identificação</div>' +
+        '<div class="pdf-grid">' +
+          campo('Nome completo', d.nome || d.nomeCompleto) +
+          campo('Data de nascimento', d.data_nasc || d.dataNasc) +
+          campo('NIF', d.nif) +
+          campo('NISS', d.niss) +
+          campo('Tipo de documento', d.tipo_doc || d.tipoDoc) +
+          campo('N.º do documento', d.num_doc || d.numDoc) +
+          campo('Validade do documento', d.validade_doc || d.validadeDoc) +
+          campo('Nacionalidade', d.nacionalidade) +
+          campo('Género', d.genero) +
+        '</div>' +
       '</div>' +
-    '</div>' +
 
-    '<div class="pdf-section">' +
-      '<div class="pdf-section-title">Contactos</div>' +
-      '<div class="pdf-grid">' +
-        campo('Telemóvel', d.telemovel) +
-        campo('Telefone fixo', d.telefone) +
-        campo('Email pessoal', d.emailPessoal) +
-        campo('Contacto emergência', d.contactoEmerg) +
+      '<div class="pdf-section">' +
+        '<div class="pdf-section-title">Morada</div>' +
+        '<div class="pdf-grid">' +
+          campoFull('Rua / Avenida', d.morada) +
+          campo('Código postal', d.cod_postal || d.codPostal) +
+          campo('Localidade', d.localidade) +
+        '</div>' +
       '</div>' +
-    '</div>' +
 
-    '<div class="pdf-section">' +
-      '<div class="pdf-section-title">Dados bancários</div>' +
-      '<div class="pdf-grid">' +
-        campoFull('IBAN', d.iban) +
-        campo('SWIFT / BIC', d.swift) +
-        campo('Banco', d.banco) +
-        campo('Titular da conta', d.titularConta) +
-        campo('IRS', d.irs) +
+      '<div class="pdf-section">' +
+        '<div class="pdf-section-title">Contactos</div>' +
+        '<div class="pdf-grid">' +
+          campo('Telemóvel', d.telemovel) +
+          campo('Email pessoal', d.email_pessoal || d.emailPessoal) +
+          campoFull('Contacto de emergência', d.contacto_emerg || d.contactoEmerg) +
+        '</div>' +
       '</div>' +
-    '</div>' +
 
-    '<div class="pdf-section">' +
-      '<div class="pdf-section-title">Estado civil e família</div>' +
-      '<div class="pdf-grid">' +
-        campo('Estado civil', d.estadoCivil) +
-        campo('Dependentes', d.temDep) +
-        campo('N.º dependentes', d.numDep) +
-        campo('Idades', d.idadesDep) +
+      '<div class="pdf-section">' +
+        '<div class="pdf-section-title">Dados bancários</div>' +
+        '<div class="pdf-grid">' +
+          campoFull('IBAN', d.iban) +
+          campo('SWIFT / BIC', d.swift) +
+          campo('Banco', d.banco) +
+          campo('IRS', d.irs) +
+        '</div>' +
       '</div>' +
-    '</div>' +
 
-    '<div class="pdf-section">' +
-      '<div class="pdf-section-title">Saúde e escolaridade</div>' +
-      '<div class="pdf-grid">' +
-        campo('Deficiência', d.temDef) +
-        campo('Grau incapacidade', d.grauDef) +
-        campo('Tipo deficiência', d.tipoDef) +
-        campo('Escolaridade', d.grauEscolar) +
-        campo('Área de formação', d.areaCurso) +
-        campo('Instituição', d.instituicao) +
+      '<div class="pdf-section">' +
+        '<div class="pdf-section-title">Estado civil e família</div>' +
+        '<div class="pdf-grid">' +
+          campo('Estado civil', d.estado_civil || d.estadoCivil) +
+          campo('Dependentes', d.tem_dep || d.temDep) +
+          campo('N.º dependentes', d.num_dep || d.numDep) +
+          campo('Idades', d.idades_dep || d.idadesDep) +
+        '</div>' +
       '</div>' +
-    '</div>' +
 
-    '<div class="pdf-section">' +
-      '<div class="pdf-section-title">Fardamento</div>' +
-      '<div class="pdf-grid">' +
-        campo('N.º de bota', d.numBota) +
-        campo('Tamanho de fato', d.numFato) +
+      '<div class="pdf-section">' +
+        '<div class="pdf-section-title">Saúde e escolaridade</div>' +
+        '<div class="pdf-grid">' +
+          campo('Deficiência', d.tem_def || d.temDef) +
+          campo('Grau de incapacidade', d.grau_def || d.grauDef) +
+          campo('Escolaridade', d.grau_escolar || d.grauEscolar) +
+          campo('Área de formação', d.area_curso || d.areaCurso) +
+        '</div>' +
       '</div>' +
-    '</div>';
 
-    if (adm.funcao) {
+      '<div class="pdf-section">' +
+        '<div class="pdf-section-title">Fardamento</div>' +
+        '<div class="pdf-grid">' +
+          campo('N.º de bota', d.num_bota || d.numBota) +
+          campo('Tamanho de fato', d.num_fato || d.numFato) +
+        '</div>' +
+      '</div>';
+
+      // Dados profissionais do colaborador (tabela colaboradores)
       html += '<div class="pdf-section">' +
         '<div class="pdf-section-title adm">Dados profissionais</div>' +
         '<div class="pdf-grid">' +
-          campo('Função / Cargo', adm.funcao) +
-          campo('Departamento', adm.departamento) +
-          campo('Data de admissão', adm.dataAdmissao) +
+          campo('Cargo', f.cargo || adm.funcao) +
+          campo('Departamento', f.departamento || adm.departamento) +
+          campo('Data de admissão', f.data_admissao || adm.dataAdmissao) +
           campo('Tipo de contrato', adm.tipoContrato) +
           campo('Horário', adm.horario) +
           campo('Salário base', adm.salarioBase ? adm.salarioBase + ' €' : '') +
@@ -1192,13 +1212,36 @@
           '</div>' +
         '</div>';
       }
+
+      html += '<div class="pdf-footer">Fortix Solutions, Lda. &nbsp;|&nbsp; geral@fortix.pt &nbsp;|&nbsp; Documento gerado em ' + agora + '</div>';
+
+      document.getElementById('pdfContent').innerHTML = html;
+      window.print();
     }
 
-    html += '<div class="pdf-footer">Ficha gerada automaticamente pelo sistema de RH Fortix &nbsp;|&nbsp; ' + agora + '</div>';
-
-    document.getElementById('pdfContent').innerHTML = html;
-    window.print();
+    // If we have NIF, fetch from Supabase for complete data
+    if (nif) {
+      Promise.all([
+        fetch(SB_URL + '/rest/v1/colaboradores?nif=eq.' + encodeURIComponent(nif) + '&select=*', {
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+        }).then(function(r){ return r.json(); }),
+        fetch(SB_URL + '/rest/v1/fichas?nif=eq.' + encodeURIComponent(nif) + '&select=*', {
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+        }).then(function(r){ return r.json(); })
+      ]).then(function(results) {
+        var colab = (results[0] && results[0].length > 0) ? results[0][0] : {};
+        var ficha = (results[1] && results[1].length > 0) ? results[1][0] : {};
+        // Merge ficha data into colab
+        var dadosCombinados = Object.assign({}, colab, ficha);
+        montarPDF(dadosCombinados, colab, dadosAdm || {});
+      }).catch(function() {
+        montarPDF(dadosColab || {}, {}, dadosAdm || {});
+      });
+    } else {
+      montarPDF(dadosColab || {}, {}, dadosAdm || {});
+    }
   }
+
 
   var dadosAdm = {};
 </script>
